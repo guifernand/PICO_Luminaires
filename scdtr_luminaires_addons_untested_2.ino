@@ -16,10 +16,13 @@ Buffer lm_buffer;
 const int LED_PIN {15}, DAC_RANGE {4095}, R10K {10000};
 const float VCC {3.3};
 
-float Gain {0};
-int pwm {0};
-bool occupancy {false}, pid_cntrl {false}, stream[3] {false, false, true};
+float Gain {0}, scale {1};
+int pwm {0}, period {2500}, step_sz {1};
+char op_mode;
+bool occupancy {false}, pid_cntrl {false}, stream[3] {false, false, false}, up {true};
 tuple<int,float,float,float>metrics;
+
+unsigned long prevTime {0};
 
 //----------------PID controller-----------------
 
@@ -88,7 +91,7 @@ const int numChars = 32;
 std::string receivedChars(numChars ,' ');
 boolean newData = false;
 
-void recvWithStartEndMarkers() {
+void recvCmmd() {
     static boolean recvInProgress = false;
     static int ndx = 0;      
     char startMarker = '<';
@@ -186,7 +189,9 @@ void GetRequest(string receivedChars){
             break;
           case 'b':
             {
-              Serial.print(lm_buffer.showData(receivedChars[2],receivedChars[3]));             
+              Serial.print("EU SOU O JOSÉ O LARI LOLLÉ");   
+              const char* print_buff = lm_buffer.showData(receivedChars[2],receivedChars[3]);
+              Serial.print(print_buff);             
             }
             break;
           case 'e':
@@ -211,7 +216,7 @@ void GetRequest(string receivedChars){
   Serial.println(" ");
 }
 
-void showNewData(){
+void newCmmd(){
     if (newData == true) {
      
         newData = false;
@@ -227,6 +232,7 @@ void showNewData(){
               } else {
                 Serial.println("ack");
                 pwm = nums*DAC_RANGE;
+                op_mode = 'd';
               }  
             }
             break;
@@ -244,6 +250,7 @@ void showNewData(){
                 Serial.println("err");
               } else {
                 ref_lux = nums;
+                scale = ref_lux/100;
                 Serial.println("ack");
               }  
             }
@@ -257,6 +264,7 @@ void showNewData(){
                 Serial.println("err");
              } else {
                 occupancy = nums;
+                op_mode = 'n';
                 Serial.println("ack");
              }  
             }
@@ -283,6 +291,7 @@ void showNewData(){
                 Serial.println("err");
              } else {
                 my_pid.setFeedB(nums);
+                op_mode = 'n';
                 Serial.println("ack");
              }  
             }
@@ -311,6 +320,36 @@ void showNewData(){
                 Serial.println("err");
               }
             break;
+          case 'c':
+            {
+              int nums = stoi(receivedChars.substr(2));
+              Serial.print(receivedChars[0]); Serial.print(" "); 
+              Serial.print(nums); Serial.print(" "); 
+              if (!(0 < nums))  {
+                Serial.println("err");
+              } else {
+                pwm == 0;
+                op_mode = 'c';
+                period = nums;
+                Serial.println("ack");
+              }               
+            }
+            break;
+          case 'p':
+            {
+              int nums = stoi(receivedChars.substr(2));
+              Serial.print(receivedChars[0]); Serial.print(" "); 
+              Serial.print(nums); Serial.print(" "); 
+              if (!(0 < nums))  {
+                Serial.println("err");
+              } else {
+                pwm == 0;
+                op_mode = 'p';
+                step_sz = nums;
+                Serial.println("ack");
+              }  
+            }
+            break;
           default:
             Serial.println("err");
             break;
@@ -324,7 +363,7 @@ struct repeating_timer timer;
 
 bool execute_controler( struct repeating_timer *t ){
     float sensed_lux = read_lux();
-    pid_cntrl = true;
+    
     if (my_pid.getFeedB()){
       pair<float, float> outs = my_pid.compute_control(ref_lux, sensed_lux);
       pwm = (int)outs.first;
@@ -333,9 +372,22 @@ bool execute_controler( struct repeating_timer *t ){
       float err = my_pid.housekeep( ref_lux , sensed_lux, outs.first, outs.second );
       metrics = compute_metrics(ref_lux,sensed_lux,pwm,millis()/1000);
 
-    }else{
-      analogWrite(LED_PIN, pwm);
     }
+    
+    if (stream[0]){
+         Serial.print("sl<i> "); Serial.print(sensed_lux);  Serial.print(" "); Serial.print(millis());
+      }
+    if (stream[1]){
+       Serial.print("sd<i> "); Serial.print(pwm*100/DAC_RANGE); Serial.print(" "); Serial.print(millis());
+       Serial.println();
+    }
+    if (stream[2]){
+       Serial.print("Duty: "); Serial.print((pwm*100/DAC_RANGE)*scale); Serial.print(" ");
+       Serial.print("Ref: "); Serial.print(ref_lux); Serial.print(" "); 
+       Serial.print("LUX: "); Serial.println(sensed_lux); 
+    }
+
+
     
   return true;
 }
@@ -351,9 +403,12 @@ float pre_computations(){
   for(int i=1; i<=10; i++){ 
     count++;
     analogWrite(LED_PIN, i*0.1*4095);
-    delay(1000);
-    
-    G += (read_lux() - o)/ (i*0.1*4095);
+    delay(2500);
+
+    float a = read_lux();
+    G += (a - o)/ (i*0.1*4095);
+
+    Serial.print(i*0.1*4095); Serial.print(" "); Serial.println(a);
   }
   analogWrite(LED_PIN, 0);
   delay(1000);
@@ -362,39 +417,42 @@ float pre_computations(){
 
 //---------------------------------------------------
 
-void create_disturbance(char op_mode){
+void operationMode(){
   
   switch(op_mode) {
           case 'd':
             {
+              my_pid.setFeedB(0);
               analogWrite(LED_PIN, pwm);
             }
             break;
           case 'c':
             {
+              my_pid.setFeedB(0);
               if (pwm == 0){
-                pwm == DAC_RANGE;
+                pwm = DAC_RANGE;
               } else if (pwm == DAC_RANGE){
-                pwm == 0;
+                pwm = 0;
               }
               analogWrite(LED_PIN, pwm);
-              delay(5000);
+              delay(period);
             }
             break;
-          case 's':
+          case 'p':
             {
-              if (pwm == 0){
+              my_pid.setFeedB(0);
+              if (pwm <= 0){
                 up = true;
-              } else if (pwm == DAC_RANGE){
+              } else if (pwm >= DAC_RANGE){
                 up = false;
               }
               if (up){
-                pwm++;
+                pwm+= step_sz;
               }else{
-                pwm--;
+                pwm-= step_sz;
               }
-              analogWrite(LED_PIN, pwm);
               delay(50);
+              analogWrite(LED_PIN, pwm);
             }
             break;
           default:
@@ -418,6 +476,8 @@ void blink(){
 //---------------------------------------------------
 
 void setup(){
+  Serial.println("Starting setup");
+
   Serial.begin();
 
   analogReadResolution(12);
@@ -427,7 +487,7 @@ void setup(){
   pinMode(LED_BUILTIN,OUTPUT);
   blink();
   Gain = pre_computations();
-  Serial.print("Gain "); Serial.println(Gain);
+  Serial.print("Gain*1000:"); Serial.println(Gain*1000);
   digitalWrite(LED_BUILTIN, HIGH);
 
   my_pid.set_point(Gain);
@@ -435,29 +495,13 @@ void setup(){
   add_repeating_timer_ms( -10,
     execute_controler,
     NULL, &timer); //100 Hz
+
+  Serial.println("Ended setup");
 }
 
 void loop() {
-  recvWithStartEndMarkers();
-  showNewData();
-  
-  if (pid_cntrl){
-    float sensed_lux = read_lux();
-    if (stream[0]){
-         Serial.print("sl<i> "); Serial.print(sensed_lux);  Serial.print(" "); Serial.print(millis());
-         Serial.println();
-      }
-      if (stream[1]){
-         Serial.print("sd<i> "); Serial.print(pwm*100/DAC_RANGE); Serial.print(" "); Serial.print(millis());
-         Serial.println();
-      }
-      if (stream[2]){
-         //Serial.print("erro: "); Serial.print(err); Serial.print(" ");
-         Serial.print("Duty: "); Serial.print(pwm*100/DAC_RANGE); Serial.print(" ");
-         Serial.print("Ref: "); Serial.print(ref_lux); Serial.print(" "); 
-         Serial.print("LUX: "); Serial.println(sensed_lux); 
-      }
-     pid_cntrl = false;
-  }
+  recvCmmd();
+  newCmmd();
+  operationMode();
   
 }

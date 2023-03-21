@@ -1,6 +1,7 @@
 #ifndef BUFFER_HPP
 #define BUFFER_HPP
 
+#include "Arduino.h"
 #include <string>
 #include <iostream>
 using namespace std;
@@ -46,6 +47,7 @@ class Buffer {
       const char* showData(char var, char desk){
           string lm_var = "b";
           int tail = (head + BUFFER_SIZE - n_stored + 1 ) % BUFFER_SIZE;
+          Serial.println("Entro");
           noInterrupts();
           if (var  == 'l'){
             while(tail != head){
@@ -60,6 +62,7 @@ class Buffer {
           }
           lm_var = lm_var + "\n";
           interrupts();
+          Serial.print("string -->"); Serial.println(lm_var.c_str());
           return lm_var.c_str();
       }
 
