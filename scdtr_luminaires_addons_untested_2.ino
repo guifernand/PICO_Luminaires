@@ -124,10 +124,8 @@ void recvCmmd() {
 }
 
 void GetRequest(string receivedChars){
-  int nums = stoi(receivedChars.substr(2));
   
   Serial.print(receivedChars[1]); Serial.print(" "); 
-  Serial.print(nums); Serial.print(" "); 
 
   switch(receivedChars[1]) {
           case 'd':
@@ -165,6 +163,8 @@ void GetRequest(string receivedChars){
             break;
           case 'k':
             {
+              int nums = stoi(receivedChars.substr(2));
+              Serial.print(nums); Serial.print(" "); 
               if (my_pid.getFeedB()){
                 Serial.print("on");
               } else {
@@ -189,8 +189,8 @@ void GetRequest(string receivedChars){
             break;
           case 'b':
             {
-              Serial.print("EU SOU O JOSÉ O LARI LOLLÉ");   
-              const char* print_buff = lm_buffer.showData(receivedChars[2],receivedChars[3]);
+              Serial.print(receivedChars[2]);Serial.print(" "); Serial.print(receivedChars[3]);
+              String print_buff = lm_buffer.showData(receivedChars[2],receivedChars[3]);
               Serial.print(print_buff);             
             }
             break;
@@ -363,6 +363,8 @@ struct repeating_timer timer;
 
 bool execute_controler( struct repeating_timer *t ){
     float sensed_lux = read_lux();
+
+    Serial.println("---> INTTTTTTTTTTTERRRRRRRRRRRRRRRROOOOOOMMMPIDO");
     
     if (my_pid.getFeedB()){
       pair<float, float> outs = my_pid.compute_control(ref_lux, sensed_lux);
@@ -481,7 +483,7 @@ void setup(){
   Serial.begin();
 
   analogReadResolution(12);
-  analogWriteFreq(60000); //30KHz
+  analogWriteFreq(100000); //30KHz
   analogWriteRange(4096); //Max PWM
 
   pinMode(LED_BUILTIN,OUTPUT);
