@@ -373,7 +373,7 @@ bool execute_controler( struct repeating_timer *t ){
       metrics = compute_metrics(ref_lux,sensed_lux,pwm,millis()/1000);
 
     }
-    
+    lm_buffer.addData(sensed_lux, pwm*100/DAC_RANGE);
     if (stream[0]){
          Serial.print("sl<i> "); Serial.print(sensed_lux);  Serial.print(" "); Serial.print(millis());
       }
@@ -481,8 +481,8 @@ void setup(){
   Serial.begin();
 
   analogReadResolution(12);
-  analogWriteFreq(30000); //30KHz
-  analogWriteRange(4095); //Max PWM
+  analogWriteFreq(60000); //30KHz
+  analogWriteRange(4096); //Max PWM
 
   pinMode(LED_BUILTIN,OUTPUT);
   blink();
