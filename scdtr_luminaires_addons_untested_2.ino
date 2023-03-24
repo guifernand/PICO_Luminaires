@@ -17,12 +17,14 @@ const int LED_PIN {15}, DAC_RANGE {4095}, R10K {10000};
 const float VCC {3.3};
 
 float Gain {0}, scale {1};
-int pwm {0}, period {2500}, step_sz {1};
+int period {2500}, step_sz {1};
 char op_mode;
 bool occupancy {false}, pid_cntrl {false}, stream[3] {false, false, false}, up {true};
-tuple<int,float,float,float>metrics;
 
-unsigned long prevTime {0};
+volatile int pwm {0}, N {0};
+volatile float Energy {0}, Visibility_sum {0}, Flicker_sum {0};
+
+volatile unsigned long prevTime {0};
 
 //----------------PID controller-----------------
 
@@ -222,17 +224,17 @@ void GetRequest(string receivedChars){
             break;
           case 'e':
             {
-              Serial.print(get<1>(metrics));
+              Serial.print(Energy);
             }
             break;
           case 'v':
             {
-              Serial.print(get<2>(metrics)/get<0>(metrics));
+              Serial.print(Visibility_sum/N);
             }
             break;
           case 'f':
             {
-              Serial.print(get<3>(metrics)/get<0>(metrics));
+              Serial.print(Flicker_sum/N);
             }
             break;
           default:
@@ -392,14 +394,21 @@ struct repeating_timer timer;
 bool execute_controler( struct repeating_timer *t ){
     float sensed_lux = read_lux();
     
+    unsigned long int curr_time = millis();
+    Serial.println(curr_time - prevTime);
+    prevTime = curr_time;
+    
     if (my_pid.getFeedB()){
       pair<float, float> outs = my_pid.compute_control(ref_lux, sensed_lux);
       pwm = (int)outs.first;
   
       analogWrite(LED_PIN, pwm);
       float err = my_pid.housekeep( ref_lux , sensed_lux, outs.first, outs.second );
-      metrics = compute_metrics(ref_lux,sensed_lux,pwm,millis()/1000);
-
+      tuple<int,float,float,float> metrics = compute_metrics(ref_lux,sensed_lux,pwm,millis()/1000);
+      N = get<0>(metrics);
+      Energy = get<1>(metrics);
+      Visibility_sum = get<2>(metrics);
+      Flicker_sum = get<3>(metrics);
     }
     lm_buffer.addData(sensed_lux, pwm*100/DAC_RANGE);
     if (stream[0]){
