@@ -19,7 +19,7 @@ const float VCC {3.3};
 float Gain {0}, scale {1};
 int period {2500}, step_sz {1};
 char op_mode;
-bool occupancy {false}, pid_cntrl {false}, stream[3] {false, false, false}, up {true};
+bool occupancy {false}, pid_cntrl {false}, stream[4] {false, false, false,false}, up {true};
 
 volatile int pwm {0}, N {0};
 volatile float Energy {0}, Visibility_sum {0}, Flicker_sum {0};
@@ -334,6 +334,8 @@ void newCmmd(){
                 stream[1] = true;
               }else if(receivedChars[1] == 'p'){
                 stream[2] = true;
+              }else if(receivedChars[1] == 'j'){
+                stream[3] = true;
               }
             }
             break;
@@ -379,7 +381,6 @@ void newCmmd(){
                 Serial.println("ack");
               }  
             }
-            break;
           default:
             Serial.println("err");
             break;
@@ -394,9 +395,8 @@ struct repeating_timer timer;
 bool execute_controler( struct repeating_timer *t ){
     float sensed_lux = read_lux();
     
-    unsigned long int curr_time = millis();
-    Serial.println(curr_time - prevTime);
-    prevTime = curr_time;
+    unsigned long curr_time = millis();
+    unsigned long curr_time_micros = micros();
     
     if (my_pid.getFeedB()){
       pair<float, float> outs = my_pid.compute_control(ref_lux, sensed_lux);
@@ -404,7 +404,7 @@ bool execute_controler( struct repeating_timer *t ){
   
       analogWrite(LED_PIN, pwm);
       float err = my_pid.housekeep( ref_lux , sensed_lux, outs.first, outs.second );
-      tuple<int,float,float,float> metrics = compute_metrics(ref_lux,sensed_lux,pwm,millis()/1000);
+      tuple<int,float,float,float> metrics = compute_metrics(ref_lux,sensed_lux,pwm,curr_time/1000);
       N = get<0>(metrics);
       Energy = get<1>(metrics);
       Visibility_sum = get<2>(metrics);
@@ -412,16 +412,22 @@ bool execute_controler( struct repeating_timer *t ){
     }
     lm_buffer.addData(sensed_lux, pwm*100/DAC_RANGE);
     if (stream[0]){
-         Serial.print("sl<i> "); Serial.print(sensed_lux);  Serial.print(" "); Serial.print(millis());
+         Serial.print("sl<i> "); Serial.print(sensed_lux);  Serial.print(" "); Serial.print(curr_time);
       }
     if (stream[1]){
-       Serial.print("sd<i> "); Serial.print(pwm*100/DAC_RANGE); Serial.print(" "); Serial.print(millis());
+       Serial.print("sd<i> "); Serial.print(pwm*100/DAC_RANGE); Serial.print(" "); Serial.print(curr_time);
        Serial.println();
     }
     if (stream[2]){
        Serial.print("Duty: "); Serial.print((pwm*100/DAC_RANGE)*scale); Serial.print(" ");
        Serial.print("Ref: "); Serial.print(ref_lux); Serial.print(" "); 
        Serial.print("LUX: "); Serial.println(sensed_lux); 
+    }
+    if (stream[3]){
+      Serial.print("Time: "); Serial.print(curr_time); Serial.print(curr_time_micros);
+      Serial.print(" Controller computing time: "); Serial.print(micros() - curr_time_micros);
+      Serial.print(" Interval between controller calls: ");Serial.println(curr_time - prevTime);
+      prevTime = curr_time;
     }
 
 
@@ -512,7 +518,7 @@ void blink(){
 //---------------------------------------------------
 
 void setup(){
-  Serial.println("Starting setup");
+  Serial.println("Starting setup ...");
 
   Serial.begin();
 
@@ -523,7 +529,6 @@ void setup(){
   pinMode(LED_BUILTIN,OUTPUT);
   blink();
   Gain = pre_computations();
-  Serial.print("Gain*1000:"); Serial.println(Gain*1000);
   digitalWrite(LED_BUILTIN, HIGH);
 
   my_pid.set_point(Gain);
