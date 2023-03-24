@@ -29,26 +29,35 @@ unsigned long prevTime {0};
 pid my_pid {0.01, 45, 1, 0.9, 0}; //Create a pid controller (h,K,b,Ti,Td,N,Tt) --> {0.01, 50, 1, 0.7, 0} --> the good
 float ref_lux {0.0};
 
-
 //-----------------Calculations------------------
-
-inline float read_lux(){
-  int median_read_adc = median_reads();
-  return measure_LUX(median_read_adc);
-}
-
+/*
+ * Calculate the measured LUX from the LDR resistance with the log scale affine relationship 
+ * inputs: LDR - resistance of the LDR
+ */
 inline float ohm_to_LUX(float LDR){
     return pow(10,(-(log10(LDR/1000)-3.15)/0.8));   
 }
 
+/*
+ * Convert the adc codificated value to voltage
+ * inputs: adc - codificated input of adc pin
+ */
 inline float adc_to_V(int adc){
     return (adc*VCC)/DAC_RANGE;
 }
 
+/*
+ *  Calculate the LDR resistance from the measured volatage using altered voltage divider equations 
+ *  inputs: read_vo - outputed voltage from the illuminance reading circuit
+ */
 inline float R_LDR(float read_vo){ 
   return R10K*((VCC/read_vo)-1);
 }
 
+/*
+ * Perform the full calculations from read adc value to illuminance  
+ * inputs: read_adc - codificated input of adc pin
+ */
 float measure_LUX(int read_adc){ 
   float read_vo {0},LDR {0};
   read_vo = adc_to_V(read_adc);
@@ -56,6 +65,9 @@ float measure_LUX(int read_adc){
   return ohm_to_LUX(LDR);
 }
 
+/*
+ * Read multiple values from the adc and selectec the median value to reduce noise 
+ */
 int median_reads(){
 
   vector<int> reads_adc(5,0);
@@ -69,6 +81,17 @@ int median_reads(){
   
 }
 
+/*
+ * Function to fully perform the lux reading
+ */
+inline float read_lux(){
+  int median_read_adc = median_reads();
+  return measure_LUX(median_read_adc);
+}
+
+/*
+ * Calculate the instantenous power present at the desk
+ */
 float inst_power(){
     float read_vo {0},LDR {0}, curr {0};
     int median_read_adc = median_reads();
@@ -78,6 +101,9 @@ float inst_power(){
     return read_vo*curr;
 }
 
+/*
+ * Calculate the illuminance from external sources 
+ */
 float external_src(){
   float sensed_lux = read_lux();
   return sensed_lux - Gain*pwm;
@@ -363,8 +389,6 @@ struct repeating_timer timer;
 
 bool execute_controler( struct repeating_timer *t ){
     float sensed_lux = read_lux();
-
-    Serial.println("---> INTTTTTTTTTTTERRRRRRRRRRRRRRRROOOOOOMMMPIDO");
     
     if (my_pid.getFeedB()){
       pair<float, float> outs = my_pid.compute_control(ref_lux, sensed_lux);
@@ -410,7 +434,6 @@ float pre_computations(){
     float a = read_lux();
     G += (a - o)/ (i*0.1*4095);
 
-    Serial.print(i*0.1*4095); Serial.print(" "); Serial.println(a);
   }
   analogWrite(LED_PIN, 0);
   delay(1000);
