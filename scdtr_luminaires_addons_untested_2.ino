@@ -257,7 +257,8 @@ void newCmmd(){
                 Serial.println("err");
               } else {
                 Serial.println("ack");
-                pwm = nums*DAC_RANGE;
+                delay(30000);
+                pwm = (nums*0.01)*DAC_RANGE;
                 op_mode = 'd';
               }  
             }
@@ -275,6 +276,7 @@ void newCmmd(){
               if (nums < 0)  {
                 Serial.println("err");
               } else {
+                my_pid.setFeedB(1);
                 ref_lux = nums;
                 scale = ref_lux/100;
                 Serial.println("ack");
